@@ -1,6 +1,6 @@
 use std::io;
 
-use actix_web::{middleware, web::{self, Bytes}, App, Error, HttpRequest, HttpResponse, HttpServer, body::{self, BoxBody}};
+use actix_web::{middleware, web::{self, Bytes, Path}, App, Error, HttpRequest, HttpResponse, HttpServer, body::{self, BoxBody}};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
 /// simple handle
@@ -30,6 +30,13 @@ async fn sse(_req: HttpRequest) -> Result<HttpResponse, Error> {
         .body(BoxBody::new(body::BodyStream::new(stream.map(|s| Result::<_, Error>::Ok(Bytes::copy_from_slice(s.as_bytes())))))))
 }
 
+#[actix_web::get("/{count}")]
+async fn counter(count: Path<u64>) -> Result<String, Error> {
+    println!("GET {}", count);
+    tokio::time::sleep(std::time::Duration::from_secs(*count)).await;
+    Ok(format!("hello world ({})!", count))
+}
+
 #[actix_web::main]
 async fn main() -> io::Result<()> {
     env_logger::init();
@@ -50,6 +57,7 @@ async fn main() -> io::Result<()> {
             // register simple handler, handle all methods
             .service(web::resource("/").to(index))
             .service(web::resource("/sse").to(sse))
+            .service(counter)
             
     })
     .bind_openssl("0.0.0.0:3030", builder)?
