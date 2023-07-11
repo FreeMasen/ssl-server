@@ -89,7 +89,7 @@ where
 }
 
 struct CharIterator {
-    ch: char
+    ch: char,
 }
 
 impl CharIterator {
@@ -112,9 +112,7 @@ impl CharIterator {
 
 impl Default for CharIterator {
     fn default() -> Self {
-        Self {
-            ch: Self::LOW_A
-        }
+        Self { ch: Self::LOW_A }
     }
 }
 
@@ -143,6 +141,7 @@ async fn large(
     )?;
     let chunk_count: u16 = rng.gen_range(chunk_count_range);
     let mut ch = CharIterator::default();
+    let sleep_between_chunks_ms = sleep_between_chunks_ms.unwrap_or(0);
     let mut iter: VecDeque<Result<_, Error>> = (0..chunk_count)
         .into_iter()
         .map(move |_| {
@@ -154,8 +153,8 @@ async fn large(
         .collect();
     let stream = async_stream::stream! {
         while let Some(chunk) = iter.pop_front() {
-            if let Some(ms) = sleep_between_chunks_ms {
-                tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            if sleep_between_chunks_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(sleep_between_chunks_ms)).await;
             }
             if let Ok(chunk) = &chunk {
                 log::debug!("sending {0} ({0:x}) [{1}] byts in chunk", chunk.len(), chunk.get(0).map(|ch| *ch as char).unwrap_or(' '));
