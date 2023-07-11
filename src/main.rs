@@ -88,6 +88,36 @@ where
     Ok(lower..upper)
 }
 
+struct CharIterator {
+    ch: char
+}
+
+impl CharIterator {
+    const CAP_A: char = 'A';
+    const CAP_Z: char = 'Z';
+    const LOW_A: char = 'a';
+    const LOW_Z: char = 'z';
+    pub fn next_string(&mut self, size: usize) -> String {
+        let ret = String::from(self.ch).repeat(size);
+        if self.ch == Self::LOW_Z {
+            self.ch = Self::CAP_A;
+        } else if self.ch == Self::CAP_Z {
+            self.ch = Self::LOW_A;
+        } else {
+            self.ch = (self.ch as u8 + 1) as char;
+        }
+        ret
+    }
+}
+
+impl Default for CharIterator {
+    fn default() -> Self {
+        Self {
+            ch: Self::LOW_A
+        }
+    }
+}
+
 #[actix_web::get("/large")]
 async fn large(
     query: Query<LargeQuery>,
@@ -112,12 +142,13 @@ async fn large(
         "chunk size",
     )?;
     let chunk_count: u16 = rng.gen_range(chunk_count_range);
+    let mut ch = CharIterator::default();
     let mut iter: VecDeque<Result<_, Error>> = (0..chunk_count)
         .into_iter()
         .map(move |_| {
             let chunk_size: usize = rng.gen_range(chunk_size_range.clone());
             Ok(actix_web::web::Bytes::copy_from_slice(
-                "a".repeat(chunk_size).as_bytes(),
+                ch.next_string(chunk_size as usize).as_bytes(),
             ))
         })
         .collect();
