@@ -158,7 +158,7 @@ async fn large(
                 tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
             }
             if let Ok(chunk) = &chunk {
-                log::debug!("sending {0} ({0:x}) byts in chunk", chunk.len());
+                log::debug!("sending {0} ({0:x}) [{1}] byts in chunk", chunk.len(), chunk.get(0).map(|ch| *ch as char).unwrap_or(' '));
             }
             yield chunk
         }
