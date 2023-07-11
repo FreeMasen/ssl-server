@@ -1,9 +1,9 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, collections::VecDeque, ops::Range, fmt::Display};
 
 use actix_web::{
     body::{self, BoxBody},
     middleware,
-    web::{self, Bytes, Data, Json, Path},
+    web::{self, Bytes, Data, Json, Path, Query},
     App, Error, HttpRequest, HttpResponse, HttpServer,
 };
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -67,23 +67,58 @@ async fn parrot(who: Json<Parrot>) -> Result<HttpResponse, Error> {
     Ok(HttpResponse::Ok().streaming(futures::stream::iter(iter)))
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct LargeQuery {
+    sleep_between_chunks_ms: Option<u64>,
+    max_chunk_size: Option<u16>,
+    min_chunk_size: Option<u16>,
+    max_chunks: Option<u16>,
+    min_chunks: Option<u16>
+}
+
+fn check_range<T>(lower: T, upper: T, name: &'static str) -> Result<Range<T>, Error> 
+where T: Display + PartialOrd {
+    if lower >= upper {
+        return Err(actix_web::error::ErrorInternalServerError(format!("Invalid {name} params: {lower}..{upper} is an invalid range")));
+    }
+    Ok(lower..upper)
+}
+
 #[actix_web::get("/large")]
-async fn large(rng: Data<Mutex<ThreadRng>>) -> Result<HttpResponse, Error> {
+async fn large(query: Query<LargeQuery>, rng: Data<Mutex<ThreadRng>>) -> Result<HttpResponse, Error> {
     use rand::Rng;
+    let LargeQuery {
+        sleep_between_chunks_ms,
+        max_chunk_size,
+        min_chunk_size,
+        max_chunks,
+        min_chunks,
+    } = dbg!(query.into_inner());
     let mut rng = rng.lock().map_err(|e| {
         actix_web::error::ErrorInternalServerError(format!("Error locking rng: {e}"))
     })?;
-    let chunk_count: u16 = rng.gen_range(5..50);
-    let iter: Vec<Result<_, Error>> = (0..chunk_count)
+    let chunk_count_range = check_range(min_chunks.unwrap_or(5), max_chunks.unwrap_or(50), "chunks")?;
+    let chunk_size_range = check_range(min_chunk_size.unwrap_or(50) as usize, max_chunk_size.unwrap_or(10_000) as usize, "chunk size")?;
+    let chunk_count: u16 = rng.gen_range(chunk_count_range);
+    let mut iter: VecDeque<Result<_, Error>> = (0..chunk_count)
         .into_iter()
-        .map(|_| {
-            let chunk_size: u16 = rng.gen_range(50..10_000);
-            let mut buf = vec![0u8; chunk_size as usize];
-            rng.fill_bytes(&mut buf);
-            Ok(actix_web::web::Bytes::copy_from_slice(&buf))
+        .map(move |_| {
+            let chunk_size: usize = rng.gen_range(chunk_size_range.clone());
+            Ok(actix_web::web::Bytes::copy_from_slice("a".repeat(chunk_size).as_bytes()))
         })
         .collect();
-    Ok(HttpResponse::Ok().streaming(futures::stream::iter(iter)))
+    let stream = async_stream::stream! {
+        while let Some(chunk) = iter.pop_front() {
+            if let Some(ms) = sleep_between_chunks_ms {
+                tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            }
+            if let Ok(chunk) = &chunk {
+                log::debug!("sending {0} ({0:x}) byts in chunk", chunk.len());
+            }
+            yield chunk
+        }
+    };
+    Ok(HttpResponse::Ok().streaming(stream))
 }
 
 #[actix_web::main]

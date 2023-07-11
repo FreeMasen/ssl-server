@@ -1166,6 +1166,7 @@ dependencies = [
  "async-stream",
  "env_logger",
  "futures",
+ "log",
  "mousse",
  "openssl",
  "rand",
