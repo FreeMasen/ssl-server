@@ -73,11 +73,11 @@ async fn large(rng: Data<Mutex<ThreadRng>>) -> Result<HttpResponse, Error> {
     let mut rng = rng.lock().map_err(|e| {
         actix_web::error::ErrorInternalServerError(format!("Error locking rng: {e}"))
     })?;
-    let chunk_count: u16 = rng.gen_range(50..4000);
+    let chunk_count: u16 = rng.gen_range(5..50);
     let iter: Vec<Result<_, Error>> = (0..chunk_count)
         .into_iter()
         .map(|_| {
-            let chunk_size: u16 = rng.gen();
+            let chunk_size: u16 = rng.gen_range(50..10_000);
             let mut buf = vec![0u8; chunk_size as usize];
             rng.fill_bytes(&mut buf);
             Ok(actix_web::web::Bytes::copy_from_slice(&buf))
